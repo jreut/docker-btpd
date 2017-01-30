@@ -1,0 +1,7 @@
+#!/bin/sh
+
+echo "btpd is starting at $(date)"
+btpd --no-daemon &
+child=$!
+wait $child
+exec "$@"
