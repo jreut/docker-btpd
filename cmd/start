@@ -1,7 +1,41 @@
 #!/bin/sh
 
-echo "btpd is starting at $(date)"
-btpd --no-daemon &
-child=$!
-wait $child
-exec "$@"
+if [ -z "$PORT" ]
+then
+  PORT=6881
+fi
+
+start() {
+  echo "btpd is starting at $(date)"
+  btpd \
+    --port "$PORT" \
+    &
+}
+
+make_fifo() {
+  mkfifo /tmp/notify-in
+}
+
+notify_create() {
+  inotifywait \
+    --monitor \
+    --outfile /tmp/notify-in \
+    --event create /var/btpd/in | \
+    grep CREATE \
+    &
+}
+
+
+watch() {
+  echo watching for files in /var/btpd/in
+
+  while read -r line
+  do
+    echo "Found $line"
+  done < /tmp/notify-in
+}
+
+make_fifo
+start
+notify_create
+watch
