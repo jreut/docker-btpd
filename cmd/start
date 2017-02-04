@@ -2,10 +2,16 @@
 
 set -e
 
-if [ -z "$PORT" ]
+if [ -z "$PORT" ] || [ -z "$INDIR" ] || [ -z "$OUTDIR" ]
 then
-  PORT=6881
+  echo environment not set:
+  echo "    PORT=$PORT"
+  echo "   INDIR=$INDIR"
+  echo "  OUTDIR=$OUTDIR"
+  exit 1
 fi
+
+NOTIFY_FILE=/tmp/notify-in
 
 start() {
   echo "btpd is starting at $(date)"
@@ -15,37 +21,52 @@ start() {
 }
 
 notify_create() {
-  dir=$1
-  fifo=$2
   inotifywait \
     --monitor \
     --daemon \
-    --outfile "$fifo" \
-    --event create \
-    "$dir"
+    --outfile "$NOTIFY_FILE" \
+    "$INDIR"
 }
 
 
 watch() {
-  echo watching for files in /var/btpd/in
+  echo watching for files in "$INDIR"
 
-  while read -r dir _ file
+  while read -r dir action file
   do
-    add_torrent "$dir/$file"
-  done < /tmp/notify-in
+    echo "$dir $action $file"
+    if [ "$action" = CREATE ]
+    then
+      add_torrent "$dir/$file"
+    fi
+  done < "$NOTIFY_FILE"
+}
+
+is_torrent() {
+  btinfo "$1" > /dev/null 2&>1
 }
 
 add_torrent() {
   path=$1
   hash=$(echo "$path" | sha1sum | cut -f 1 -d ' ')
   name=$(basename "$path" | tr -d '[:space:]')
-  cmd="btcli add -d /var/btpd/out/$hash -n $name $path"
-  echo "$cmd"
-  $cmd
+  if is_torrent "$path"
+  then
+    echo "btcli add -d $OUTDIR/$hash -n $name $path"
+    btcli add -d "$OUTDIR/$hash" -n "$name" "$path" || err=$?
+    echo "could not add torrent $path ($err)"
+  else
+    echo "$path" is not a torrent
+  fi
 }
 
 
-mkfifo /tmp/notify-in
-notify_create /var/btpd/in /tmp/notify-in
+mkfifo "$NOTIFY_FILE"
+notify_create
 start
-watch
+watch &
+
+child=$!
+wait $child
+
+exec "$@"
