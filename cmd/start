@@ -34,30 +34,21 @@ watch() {
 
   while read -r dir action file
   do
-    echo "$dir $action $file"
     if [ "$action" = CREATE ]
     then
+      echo found "$file"
       add_torrent "$dir/$file"
     fi
   done < "$NOTIFY_FILE"
-}
-
-is_torrent() {
-  btinfo "$1" > /dev/null 2&>1
 }
 
 add_torrent() {
   path=$1
   hash=$(echo "$path" | sha1sum | cut -f 1 -d ' ')
   name=$(basename "$path" | tr -d '[:space:]')
-  if is_torrent "$path"
-  then
-    echo "btcli add -d $OUTDIR/$hash -n $name $path"
-    btcli add -d "$OUTDIR/$hash" -n "$name" "$path" || err=$?
-    echo "could not add torrent $path ($err)"
-  else
-    echo "$path" is not a torrent
-  fi
+  echo "btcli add -d $OUTDIR/$hash -n $name $path"
+  btcli add -d "$OUTDIR/$hash" -n "$name" "$path" || \
+    echo could not add torrent "$name"
 }
 
 
